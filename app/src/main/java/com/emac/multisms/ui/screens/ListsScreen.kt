@@ -21,6 +21,7 @@ import com.emac.multisms.data.Contact
 import com.emac.multisms.data.SendStatus
 import com.emac.multisms.data.SendingList
 import com.emac.multisms.ui.MainViewModel
+import com.emac.multisms.util.ContactGroup
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,6 +36,9 @@ fun ListsScreen(vm: MainViewModel, snackbar: (String) -> Unit) {
     var showRenameDialog by remember { mutableStateOf(false) }
     var showAddContact by remember { mutableStateOf(false) }
     var pendingFileName by remember { mutableStateOf<String?>(null) }
+    var showGroupPicker by remember { mutableStateOf(false) }
+    var loadingGroups by remember { mutableStateOf(false) }
+    var groups by remember { mutableStateOf<List<ContactGroup>>(emptyList()) }
 
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -81,9 +85,9 @@ fun ListsScreen(vm: MainViewModel, snackbar: (String) -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AssistChip(
                 onClick = {
-                    vm.importFromDevice("Contacts du téléphone") { count, skipped ->
-                        snackbar("$count contacts importés" + if (skipped > 0) " · $skipped ignorés" else "")
-                    }
+                    showGroupPicker = true
+                    loadingGroups = true
+                    vm.loadDeviceGroups { list -> groups = list; loadingGroups = false }
                 },
                 label = { Text("Téléphone") },
                 leadingIcon = { Icon(Icons.Default.Contacts, null) }
@@ -176,6 +180,68 @@ fun ListsScreen(vm: MainViewModel, snackbar: (String) -> Unit) {
         AddContactDialog(
             onConfirm = { name, phone -> vm.addContact(name, phone); showAddContact = false },
             onDismiss = { showAddContact = false }
+        )
+    }
+
+    if (showGroupPicker) {
+        AlertDialog(
+            onDismissRequest = { showGroupPicker = false },
+            title = { Text("Importer depuis le téléphone") },
+            text = {
+                Column {
+                    // Tous les contacts
+                    Text(
+                        "📇  Tous les contacts",
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showGroupPicker = false
+                                vm.importFromDevice("Contacts du téléphone") { c, s ->
+                                    snackbar("$c contacts importés" + if (s > 0) " · $s ignorés" else "")
+                                }
+                            }
+                            .padding(vertical = 12.dp)
+                    )
+                    HorizontalDivider()
+                    Spacer(Modifier.height(8.dp))
+                    Text("Ou choisis un groupe :", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+
+                    when {
+                        loadingGroups -> Row(
+                            Modifier.fillMaxWidth().padding(16.dp),
+                            horizontalArrangement = Arrangement.Center
+                        ) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
+
+                        groups.isEmpty() -> Text(
+                            "Aucun groupe trouvé sur ce téléphone.",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+
+                        else -> LazyColumn(Modifier.heightIn(max = 260.dp)) {
+                            items(groups, key = { it.title }) { g ->
+                                Text(
+                                    "👥  ${g.title}",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            showGroupPicker = false
+                                            vm.importFromGroup(g) { c, s ->
+                                                snackbar("$c contacts importés depuis « ${g.title} »" + if (s > 0) " · $s ignorés" else "")
+                                            }
+                                        }
+                                        .padding(vertical = 10.dp)
+                                )
+                                HorizontalDivider()
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showGroupPicker = false }) { Text("Annuler") } }
         )
     }
 }

@@ -15,6 +15,7 @@ import com.emac.multisms.sms.SendProgress
 import com.emac.multisms.sms.Scheduler
 import com.emac.multisms.sms.SmsSenderService
 import com.emac.multisms.util.ContactImporter
+import com.emac.multisms.util.ContactGroup
 import com.emac.multisms.util.SimCard
 import com.emac.multisms.util.SimUtil
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -161,6 +162,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val raw = withContext(Dispatchers.IO) { ContactImporter.fromFile(ctx, uri) }
         val (imported, skipped) = ContactImporter.clean(raw)
         val listId = repo.createList(newListName.ifBlank { "Import fichier" }).also { _selectedListId.value = it }
+        repo.addContacts(listId, imported.map { it.name to it.phone })
+        onDone(imported.size, skipped)
+    }
+
+    /** Charge la liste des groupes de contacts du téléphone. */
+    fun loadDeviceGroups(onResult: (List<ContactGroup>) -> Unit) = viewModelScope.launch {
+        val groups = withContext(Dispatchers.IO) { ContactImporter.deviceGroups(ctx) }
+        onResult(groups)
+    }
+
+    /** Importe un groupe précis du téléphone dans une nouvelle liste à son nom. */
+    fun importFromGroup(group: ContactGroup, onDone: (Int, Int) -> Unit) = viewModelScope.launch {
+        val raw = withContext(Dispatchers.IO) { ContactImporter.fromDeviceGroup(ctx, group.ids) }
+        val (imported, skipped) = ContactImporter.clean(raw)
+        val listId = repo.createList(group.title).also { _selectedListId.value = it }
         repo.addContacts(listId, imported.map { it.name to it.phone })
         onDone(imported.size, skipped)
     }

@@ -2,6 +2,10 @@ package com.emac.multisms.ui.screens
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -16,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.emac.multisms.sms.SendPhase
 import com.emac.multisms.ui.MainViewModel
 import com.emac.multisms.util.SmsText
@@ -47,6 +52,7 @@ fun SendScreen(vm: MainViewModel, snackbar: (String) -> Unit) {
     var showSettings by remember { mutableStateOf(false) }
     var showFullMessage by remember { mutableStateOf(false) }
     var showConfirm by remember { mutableStateOf(false) }
+    var showSmsHelp by remember { mutableStateOf(false) }
 
     val sims = remember { vm.sims }
     var selectedSubId by remember { mutableIntStateOf(-1) }
@@ -186,6 +192,13 @@ fun SendScreen(vm: MainViewModel, snackbar: (String) -> Unit) {
             if (!running) {
                 Button(
                     onClick = {
+                        val hasSms = ContextCompat.checkSelfPermission(
+                            context, android.Manifest.permission.SEND_SMS
+                        ) == PackageManager.PERMISSION_GRANTED
+                        if (!hasSms) {
+                            showSmsHelp = true
+                            return@Button
+                        }
                         if (scheduleOn) {
                             val at = scheduledAt
                             if (at == null) { snackbar("Choisis la date et l'heure."); return@Button }
@@ -250,6 +263,35 @@ fun SendScreen(vm: MainViewModel, snackbar: (String) -> Unit) {
                 }) { Text("Envoyer") }
             },
             dismissButton = { TextButton(onClick = { showConfirm = false }) { Text("Annuler") } }
+        )
+    }
+
+    if (showSmsHelp) {
+        AlertDialog(
+            onDismissRequest = { showSmsHelp = false },
+            title = { Text("Activer l'envoi de SMS") },
+            text = {
+                Text(
+                    "Pour envoyer des SMS, autorise l'application :\n\n" +
+                        "1. Appuie sur « Ouvrir les réglages » ci-dessous.\n" +
+                        "2. Ouvre « Autorisations ».\n" +
+                        "3. Si « SMS » est bloqué, appuie sur le menu ⋮ (en haut à droite) → " +
+                        "« Autoriser les paramètres restreints ».\n" +
+                        "4. Appuie sur « SMS » → « Autoriser ».\n" +
+                        "5. Reviens dans l'app et relance l'envoi."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showSmsHelp = false
+                    val intent = Intent(
+                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.fromParts("package", context.packageName, null)
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                }) { Text("Ouvrir les réglages") }
+            },
+            dismissButton = { TextButton(onClick = { showSmsHelp = false }) { Text("Fermer") } }
         )
     }
 }

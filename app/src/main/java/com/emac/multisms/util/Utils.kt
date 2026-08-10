@@ -15,6 +15,9 @@ import kotlin.math.ceil
 /** Un contact importé : nom + numéro. */
 data class ImportedContact(val name: String, val phone: String)
 
+/** Un groupe de contacts du téléphone (ex. Famille, Église). */
+data class ContactGroup(val title: String, val ids: List<Long>)
+
 object ContactImporter {
 
     /** Lit tous les contacts (nom + numéro) du téléphone. Nécessite READ_CONTACTS. */
@@ -81,6 +84,90 @@ object ContactImporter {
         // On garde le '+' seulement en tête.
         return if (cleaned.startsWith("+")) "+" + cleaned.drop(1).filter { it.isDigit() }
         else cleaned.filter { it.isDigit() }
+    }
+
+    /** Liste les groupes de contacts du téléphone (Famille, Église…). Nécessite READ_CONTACTS. */
+    fun deviceGroups(context: Context): List<ContactGroup> {
+        val byTitle = LinkedHashMap<String, MutableList<Long>>()
+        val cursor = context.contentResolver.query(
+            ContactsContract.Groups.CONTENT_URI,
+            arrayOf(
+                ContactsContract.Groups._ID,
+                ContactsContract.Groups.TITLE,
+                ContactsContract.Groups.DELETED,
+                ContactsContract.Groups.AUTO_ADD
+            ),
+            null, null,
+            ContactsContract.Groups.TITLE + " ASC"
+        ) ?: return emptyList()
+
+        cursor.use { c ->
+            val idIdx = c.getColumnIndex(ContactsContract.Groups._ID)
+            val titleIdx = c.getColumnIndex(ContactsContract.Groups.TITLE)
+            val deletedIdx = c.getColumnIndex(ContactsContract.Groups.DELETED)
+            val autoAddIdx = c.getColumnIndex(ContactsContract.Groups.AUTO_ADD)
+            while (c.moveToNext()) {
+                val deleted = if (deletedIdx >= 0) c.getInt(deletedIdx) else 0
+                val autoAdd = if (autoAddIdx >= 0) c.getInt(autoAddIdx) else 0
+                if (deleted == 1 || autoAdd == 1) continue
+                val title = (if (titleIdx >= 0) c.getString(titleIdx) else null)?.trim() ?: ""
+                if (title.isBlank()) continue
+                val id = if (idIdx >= 0) c.getLong(idIdx) else continue
+                byTitle.getOrPut(title) { mutableListOf() }.add(id)
+            }
+        }
+        return byTitle.map { ContactGroup(it.key, it.value) }
+    }
+
+    /** Importe les contacts appartenant à un groupe précis du téléphone. */
+    fun fromDeviceGroup(context: Context, groupIds: List<Long>): List<ImportedContact> {
+        if (groupIds.isEmpty()) return emptyList()
+
+        // 1) IDs des contacts membres du/des groupe(s).
+        val contactIds = LinkedHashSet<Long>()
+        val placeholders = groupIds.joinToString(",") { "?" }
+        val selection = ContactsContract.Data.MIMETYPE + " = ? AND " +
+            ContactsContract.CommonDataKinds.GroupMembership.GROUP_ROW_ID + " IN ($placeholders)"
+        val args = ArrayList<String>()
+        args.add(ContactsContract.CommonDataKinds.GroupMembership.CONTENT_ITEM_TYPE)
+        groupIds.forEach { args.add(it.toString()) }
+
+        context.contentResolver.query(
+            ContactsContract.Data.CONTENT_URI,
+            arrayOf(ContactsContract.Data.CONTACT_ID),
+            selection, args.toTypedArray(), null
+        )?.use { c ->
+            val idx = c.getColumnIndex(ContactsContract.Data.CONTACT_ID)
+            while (c.moveToNext()) if (idx >= 0) contactIds.add(c.getLong(idx))
+        }
+        if (contactIds.isEmpty()) return emptyList()
+
+        // 2) Numéros de ces contacts.
+        val result = mutableListOf<ImportedContact>()
+        val seen = HashSet<String>()
+        val idList = contactIds.joinToString(",")
+        context.contentResolver.query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            arrayOf(
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER
+            ),
+            ContactsContract.CommonDataKinds.Phone.CONTACT_ID + " IN ($idList)",
+            null,
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
+        )?.use { c ->
+            val nameIdx = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+            val numIdx = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+            while (c.moveToNext()) {
+                val name = (if (nameIdx >= 0) c.getString(nameIdx) else null) ?: ""
+                val rawNum = (if (numIdx >= 0) c.getString(numIdx) else null) ?: ""
+                val phone = normalizePhone(rawNum)
+                if (phone.isNotEmpty() && seen.add(phone)) {
+                    result.add(ImportedContact(name.ifBlank { phone }, phone))
+                }
+            }
+        }
+        return result
     }
 
     /**
