@@ -97,7 +97,7 @@ object SessionManager {
     }
 
     // URL de secours / démo. À remplacer par le backend d'EmacDigital.
-    const val DEFAULT_SERVER = "https://api.emacdigital.com"
+    const val DEFAULT_SERVER = "https://smspro-backend-production-e0c7.up.railway.app"
     // Page d'achat de crédits (Chariow / Mobile Money).
-    const val BUY_CREDITS_URL = "https://emacdigital.com/credits"
+    const val BUY_CREDITS_URL = "https://emacdigital.com"
 }

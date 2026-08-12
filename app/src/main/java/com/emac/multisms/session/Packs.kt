@@ -18,8 +18,8 @@ data class CreditPack(
 
 object Packs {
     val all = listOf(
-        CreditPack("pack-1000", "1 000 FCFA", 1000, "https://emacdigital.com/credits?pack=1000"),
-        CreditPack("pack-5000", "5 000 FCFA", 6000, "https://emacdigital.com/credits?pack=5000"),
-        CreditPack("pack-10000", "10 000 FCFA", 15000, "https://emacdigital.com/credits?pack=10000")
+        CreditPack("pack-1000", "1 000 FCFA", 1000, "https://emacdigital.com/prd_j4c9nciv"),
+        CreditPack("pack-5000", "5 000 FCFA", 6000, "https://emacdigital.com/prd_2ln7q397"),
+        CreditPack("pack-10000", "10 000 FCFA", 15000, "https://emacdigital.com/prd_jkq4lerx")
     )
 }
