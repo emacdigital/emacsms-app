@@ -17,6 +17,20 @@ android {
         versionName = "1.0"
     }
 
+    // Signature « release » : les valeurs viennent des secrets GitHub (variables d'environnement).
+    // En local (sans ces variables), on ne signe pas — seul le build CI produit une app signée.
+    val ksPath = System.getenv("KEYSTORE_PATH")
+    signingConfigs {
+        if (ksPath != null) {
+            create("release") {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -24,6 +38,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (ksPath != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
